@@ -1,0 +1,84 @@
+import os
+import pg8000
+import csv
+import io
+import boto3
+
+def lambda_handler(event, context):
+    try:
+        # DB connection
+        conn = pg8000.connect(
+            host=os.environ['DB_HOST'],
+            user=os.environ['DB_USER'],
+            password=os.environ['DB_PASSWORD'],
+            database=os.environ['DB_NAME'],
+            port=5432,
+            ssl_context=True
+        )
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                p.PTY_FirstName,
+                p.PTY_LastName,
+                p.PTY_Phone,
+                a.Add_City,
+                s.Stt_Name
+            FROM OPT_Party p
+            JOIN OPT_Address a ON p.PTY_ID = a.Add_PartyID
+            JOIN SYS_State s ON a.Add_State = s.Stt_ID
+        """)
+        rows = cursor.fetchall()
+
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['First Name', 'Last Name', 'Phone', 'City', 'State'])
+        writer.writerows(rows)
+        csv_data = output.getvalue()
+
+        cursor.close()
+        conn.close()
+
+        # Send email via SES
+        ses = boto3.client('ses')
+
+
+        sender = os.environ['SENDER_EMAIL']
+        receiver = os.environ['RECEIVER_EMAIL']
+
+        email_body = f"""From: {sender}
+To: {receiver}
+Subject: Client Details CSV
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="NextPart"
+
+--NextPart
+Content-Type: text/plain
+
+Please find the attached client details CSV.
+
+--NextPart
+Content-Type: text/csv
+Content-Disposition: attachment; filename="clients.csv"
+
+{csv_data}
+--NextPart--
+"""
+
+        ses.send_raw_email(
+            Source=sender,
+            Destinations=[receiver],
+            RawMessage={'Data': email_body}
+        )
+
+        return {
+            "statusCode": 200,
+            "message": "Email sent successfully"
+        }
+
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "error": str(e)
+        }
