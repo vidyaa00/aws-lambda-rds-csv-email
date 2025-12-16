@@ -5,6 +5,18 @@ import io
 import boto3
 
 def lambda_handler(event, context):
+return {
+        "statusCode": 200,
+        "body": "API Gateway HTTP API deployed successfully"
+    }
+    if event.get("requestContext", {}).get("http", {}).get("method") == "GET":
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "text/html"
+            },
+            "body": "<h1>AWS Deployment Successful</h1><p>Backend Lambda is working.</p>"
+        }
     try:
         # DB connection
         conn = pg8000.connect(
@@ -82,3 +94,4 @@ Content-Disposition: attachment; filename="clients.csv"
             "statusCode": 500,
             "error": str(e)
         }
+
